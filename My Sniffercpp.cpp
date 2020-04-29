@@ -1,4 +1,3 @@
-// пример с сайта https://www.programmersforum.ru/showthread.php?t=322382, несколько переделанны…
 
 #define MAX_IP_SIZE        65535
 
