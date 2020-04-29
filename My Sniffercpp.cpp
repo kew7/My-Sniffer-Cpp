@@ -1,9 +1,6 @@
 // пример с сайта https://www.programmersforum.ru/showthread.php?t=322382, несколько переделанныЙ
-/*
-1: Ловит один IP пакет;
-2: Показывает его заголовок(версия, длина, флаги и т.д.);
-3: Показывает его даннные
-*/
+
+#define MAX_IP_SIZE        65535
 
 #include <iostream>
 #include <conio.h>
@@ -126,15 +123,20 @@ int main(int argc, char* argv[])
 	HOSTENT* phe;
 	SOCKADDR_IN sa;
 	unsigned long flag = 1;
-	char Buffer[65535];
+	char Buffer[MAX_IP_SIZE];
 	WSABUF  wBuf;
 	DWORD   dwBytesRet,
-		    dwFlags=0;
-			wBuf.len = 65535;
+		    dwFlags = 0;
+			wBuf.len = MAX_IP_SIZE;
 			wBuf.buf = Buffer;
+	int nIPtemp;
+
+	// кодировка
+	SetConsoleCP(1251);
+	SetConsoleOutputCP(1251);
 
 	cout << "Start...\n";
-	if (WSAStartup(MAKEWORD(2, 2), &WSData) != 0)  // загружаем библиотеку 
+	if (WSAStartup(MAKEWORD(2, 2), &WSData) != 0)  // загружаем библиотеку Winsock2
 	{
 		cout << "Error loading WSA";
 		return FALSE;
@@ -144,8 +146,34 @@ int main(int argc, char* argv[])
 	gethostname(name, sizeof(name));
 	phe = gethostbyname(name);
 	ZeroMemory(&sa, sizeof(sa));
+	
+	// IP-адреса устройств
+	USHORT nCountIPadr =0; // количество ненулевых IP-адресов
+	cout << "Список доступных IP-адресов:" << endl;
+	for (int i = 0; phe->h_addr_list[i] != 0; ++i) {
+		cout << i+1 << ". " << inet_ntoa(*(struct in_addr*)phe->h_addr_list[i]) << endl; 
+		nCountIPadr++;
+	}
+	cout << endl;
+	cout << "Count of IP adress = " << nCountIPadr << endl << endl;
+
+////////////////////////////////
+LABEL: // метка при неправильном вводе
+	cout << "Enter Number of IP-adress: ";	// номер IP-адреса из списка
+	cin >> nIPtemp;
+
+	if ((nIPtemp > 0) && (nIPtemp <= nCountIPadr))
+	{
+		nIPtemp = nIPtemp--; 
+		cout << "Ок...\n\n" << endl;
+	} // уменьшаем на 1 с учетом индексации массива
+	else 
+		goto LABEL; 
+////////////////////////////////
+
 	sa.sin_family = AF_INET;
-	sa.sin_addr.s_addr = ((struct in_addr*)phe->h_addr_list[0])->s_addr;
+	sa.sin_addr.s_addr = ((struct in_addr*)phe->h_addr_list[nIPtemp])->s_addr;
+
 	if (bind(s, (SOCKADDR*)&sa, sizeof(SOCKADDR)) == SOCKET_ERROR)
 	{
 		cout << "Error bind";
@@ -153,18 +181,8 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	// Using WSAIoctl function controls the mode of a socket
-	// The SIO_RCVALL control code enables a socket to receive all IPv4 or IPv6 packets passing through a network interface
-
-	/******************* ПЕРВЫЙ ВАРИАНТ устаревший, но рабочий **********************/ 
-	/*if (ioctlsocket(s, SIO_RCVALL, &flag) == SOCKET_ERROR)
-	{
-		cout << "WSAIoctl error";
-		cout << WSAGetLastError();
-	}*/
-
-	/*******************  ВТОРОЙ ВАРИАНТ  ********************/
-	RCVALL_VALUE mRCVAL = RCVALL_IPLEVEL;		// перехватываем только IP-пакеты, подробнее см.RCVALL_VALUE
+	/*******************  Использование фунции WSAIoctl  ********************/
+	RCVALL_VALUE mRCVAL = RCVALL_IPLEVEL;		// только IP-пакеты, подробнее см.RCVALL_VALUE
 	DWORD lpcbBytesReturned;
 	if (WSAIoctl(s, SIO_RCVALL, &mRCVAL, sizeof(mRCVAL), NULL, 0, &lpcbBytesReturned,
 				NULL, NULL) == SOCKET_ERROR)
@@ -178,10 +196,10 @@ int main(int argc, char* argv[])
 	int c = 0;
 	IPPacket* iph = (IPPacket*)Buffer;
 
-	while (!_kbhit()) // до нажатия любой клавиши
+	while (!kbhit()) // до нажатия любой клавиши
 	{
 		count = recv(s, Buffer, sizeof(Buffer), 0);
-		//count = WSARecv(s, &wBuf, 1, &dwBytesRet, &dwFlags, NULL, NULL);
+		if (count == SOCKET_ERROR) cout << "Ошибка WSARecv";
 		if (count >= sizeof(IPPacket))
 		{
 			ShowPacketInfo(iph);
@@ -199,7 +217,6 @@ int main(int argc, char* argv[])
 		}
 		Sleep(100);
 	}
-
 	closesocket(s);
 	WSACleanup();
 	return 0;
